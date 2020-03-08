@@ -1,4 +1,4 @@
-# theano-learning
+# Theano-learning
 
 Study of neural network for the first time
 
