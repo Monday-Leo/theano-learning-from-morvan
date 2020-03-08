@@ -1,0 +1,435 @@
+#function用法
+
+import numpy as np
+import theano.tensor as T
+from theano import function
+
+#basic
+x = T.dscalar('x')	#建立x
+y = T.dscalar('y')	#建立y
+z = x+y
+f = function([x,y],z)	#输入量为x和y,输出为z
+
+print(f(2,3))
+
+#to pretty-print the function
+from theano import pp
+print(pp(z))		#可打印出z的来源
+
+#how about matrix
+
+x=T.dmatrix('x')	#建立矩阵
+y=T.dmatrix('y')	#建立矩阵
+z=x+y
+f=function([x,y],z)
+
+print(f(np.arange(12).reshape((3,4)),10*np.ones((3,4))))
+
+import numpy as np
+import theano
+import theano.tensor as T
+
+# activation function example
+x = T.dmatrix('x')			#定义矩阵
+s = 1 / (1 + T.exp(-x))    		#定义输出
+logistic = theano.function([x], s)	#建立函数
+print(logistic([[0, 1],[-1, -2]]))	#加入参数，并打印
+
+
+a, b = T.dmatrices('a', 'b') 		#同时定义两个变量
+diff = a - b
+abs_diff = abs(diff)
+diff_squared = diff ** 2
+
+f = theano.function([a, b], [diff, abs_diff, diff_squared])
+#定义函数，可以定义多个输出，放在两个列表当中
+print( f(np.ones((2, 2)), np.arange(4).reshape((2, 2))) )
+
+x, y, w = T.dscalars('x', 'y', 'w')
+z = (x+y)*w
+f = theano.function([x,
+                     theano.In(y, value=1),
+                     theano.In(w, value=2, name='weights')],
+                   z)
+#建立函数，In中的value表示变量的初始值，name表示变量的名称
+
+print(f(23, 2, weights=4))
+
+#share语法
+import numpy as np
+import theano
+import theano.tensor as T
+
+state = theano.shared(np.array(0,dtype=np.float64), 'state') 
+#定义share的变量state，注意数据类型
+
+inc = T.scalar('inc', dtype=state.dtype)
+accumulator = theano.function([inc], state, updates=[(state, state+inc)])
+
+#定义函数，累加状态，每次调用更新状态 类似state = state+inc
+
+print(state.get_value())	#打印0
+accumulator(1)    
+print(state.get_value())	#打印1
+accumulator(10)  
+print(state.get_value())	#打印11
+
+
+state.set_value(-1)		#state置-1
+accumulator(3)
+print(state.get_value())	#打印2
+
+
+tmp_func = state * 2 + inc
+a = T.scalar(dtype=state.dtype)
+skip_shared = theano.function([inc, a], tmp_func, givens=[(state, a)]) 
+
+#暂时用a代替state，
+print(skip_shared(2, 3))
+print(state.get_value()) 	#state的值没有改变，为2
+
+#定义层
+import theano
+import theano.tensor as T
+import numpy as np
+
+
+class Layer(object):
+    def __init__(self, inputs, in_size, out_size, activation_function=None):
+        
+	#定义变量
+	self.W = theano.shared(np.random.normal(0, 1, (in_size, out_size)))
+        self.b = theano.shared(np.zeros((out_size, )) + 0.1)
+        self.Wx_plus_b = T.dot(inputs, self.W) + self.b
+
+	#定义过滤
+        self.activation_function = activation_function
+        if activation_function is None:
+            self.outputs = self.Wx_plus_b
+        else:
+            self.outputs = self.activation_function(self.Wx_plus_b)
+
+#建立神经网络 回归问题
+import theano
+import theano.tensor as T
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+class Layer(object):
+    def __init__(self, inputs, in_size, out_size, activation_function=None):
+        self.W = theano.shared(np.random.normal(0, 1, (in_size, out_size)))      
+        self.b = theano.shared(np.zeros((out_size, )) + 0.1)
+        #shape只有一个参数时，可以当做行，也可以当做列
+        self.Wx_plus_b = T.dot(inputs, self.W) + self.b
+        self.activation_function = activation_function
+        if activation_function is None:
+            self.outputs = self.Wx_plus_b
+        else:
+            self.outputs = self.activation_function(self.Wx_plus_b)
+
+
+# Make up some fake data
+x_data = np.linspace(-1, 1, 300)[:, np.newaxis]
+#加入新坐标，目的在定义一个300行的列向量
+noise = np.random.normal(0, 0.05, x_data.shape)
+y_data = np.square(x_data) - 0.5 + noise        # y = x^2 - 0.5
+
+# show the fake data
+#plt.scatter(x_data, y_data)
+#plt.show()
+
+# determine the inputs dtype
+x = T.dmatrix("x")
+y = T.dmatrix("y")
+
+# add layers
+l1 = Layer(x, 1, 10, T.nnet.relu)
+#定义了激励函数
+l2 = Layer(l1.outputs, 10, 1, None)
+#定义层时注意，前一个输出神经元个数必须等于后一个输入神经元个数，即10 = 10
+
+# compute the cost
+cost = T.mean(T.square(l2.outputs - y))
+
+# compute the gradients
+gW1, gb1, gW2, gb2 = T.grad(cost, [l1.W, l1.b, l2.W, l2.b])
+#因为cost和四个参数有关，分别对四个参数求偏导，得到梯度
+
+# apply gradient descent
+learning_rate = 0.05
+train = theano.function(
+    inputs=[x, y],
+    outputs=cost,
+    updates=[(l1.W, l1.W - learning_rate * gW1),
+             (l1.b, l1.b - learning_rate * gb1),
+             (l2.W, l2.W - learning_rate * gW2),
+             (l2.b, l2.b - learning_rate * gb2)])
+#每训练一次更新四个参数值
+
+fig = plt.figure()
+ax = fig.add_subplot(1,1,1)
+ax.scatter(x_data,y_data)
+plt.ion()
+#让plt.show()不再阻塞
+plt.show()
+
+# prediction
+predict = theano.function(inputs=[x], outputs=l2.outputs)
+
+for i in range(1000):
+    # training
+    err = train(x_data, y_data)
+    if i % 50 == 0:
+        print('经过第'+str(i)+'次训练:cost='+str(err))
+        try:
+            ax.lines.remove(lines[0])
+            #移去上次学习的曲线
+        except Exception:
+            pass
+        
+        predict_value = predict(x_data)
+        lines = ax.plot(x_data,predict_value,'r-')
+        plt.pause(0.1)
+    updates=[(l1.W, l1.W - learning_rate * gW1),
+             (l1.b, l1.b - learning_rate * gb1),
+             (l2.W, l2.W - learning_rate * gW2),
+             (l2.b, l2.b - learning_rate * gb2)])
+#每训练一次更新四个参数值
+
+# prediction
+predict = theano.function(inputs=[x], outputs=l2.outputs)
+
+for i in range(1000):
+    # training
+    err = train(x_data, y_data)
+    if i % 50 == 0:
+        print(err)
+
+
+
+
+
+#分类问题的神经网络
+import numpy as np
+import theano
+import theano.tensor as T
+
+#用于计算准确率
+def compute_accuracy(y_target, y_predict):
+    correct_prediction = np.equal(y_predict, y_target)
+    accuracy = np.sum(correct_prediction)/len(correct_prediction)
+    return accuracy
+
+rng = np.random
+
+N = 400                                   # training sample size
+feats = 784                               # number of input variables
+
+# generate a dataset: D = (input_values, target_class)
+#定义了输入和最后的输出值
+D = (rng.randn(N, feats), rng.randint(size=N, low=0, high=2))
+
+# Declare Theano symbolic variables
+x = T.dmatrix("x")
+y = T.dvector("y")
+
+# initialize the weights and biases
+W = theano.shared(rng.randn(feats), name="w")
+b = theano.shared(0.1, name="b")
+
+
+# Construct Theano expression graph
+#设置激励函数，计算分类问题的代价函数
+p_1 = T.nnet.sigmoid(T.dot(x, W) + b)   # Logistic Probability that target = 1 (activation function)
+prediction = p_1 > 0.5                    # The prediction thresholded
+xent = -y * T.log(p_1) - (1-y) * T.log(1-p_1) # Cross-entropy loss function
+
+#避免过拟合
+cost = xent.mean() + 0.01 * (W ** 2).sum()# The cost to minimize (l2 regularization)
+gW, gb = T.grad(cost, [W, b])             # Compute the gradient of the cost
+
+
+# Compile
+learning_rate = 0.1
+train = theano.function(
+          inputs=[x, y],
+          outputs=[prediction, xent.mean()],
+          updates=((W, W - learning_rate * gW),
+                   (b, b - learning_rate * gb)))
+predict = theano.function(inputs=[x], outputs=prediction)
+
+# Training
+for i in range(500):
+    pred, err = train(D[0], D[1])
+    if i % 50 == 0:
+        print('cost:', err)
+        print("accuracy:", compute_accuracy(D[1], predict(D[0])))
+
+print("target values for D:")
+print(D[1])
+print("prediction on D:")
+print(predict(D[0]))
+
+
+
+
+#正则化减少神经网络的过拟合
+import theano
+from sklearn.datasets import load_boston
+import theano.tensor as T
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+class Layer(object):
+    def __init__(self, inputs, in_size, out_size, activation_function=None):
+        self.W = theano.shared(np.random.normal(0, 1, (in_size, out_size)))
+        self.b = theano.shared(np.zeros((out_size, )) + 0.1)
+        self.Wx_plus_b = T.dot(inputs, self.W) + self.b
+        self.activation_function = activation_function
+        if activation_function is None:
+            self.outputs = self.Wx_plus_b
+        else:
+            self.outputs = self.activation_function(self.Wx_plus_b)
+
+#将所有的参数按比例缩小到【0，1】
+def minmax_normalization(data):
+    xs_max = np.max(data, axis=0)
+    xs_min = np.min(data, axis=0)
+    xs = (1 - 0) * (data - xs_min) / (xs_max - xs_min) + 0
+    return xs
+
+np.random.seed(100)
+x_data = load_boston().data
+# minmax normalization, rescale the inputs
+x_data = minmax_normalization(x_data)
+
+y_data = load_boston().target[:, np.newaxis]
+
+# cross validation, train test data split
+#将数据分为训练集和测试集两部分
+x_train, y_train = x_data[:400], y_data[:400]
+x_test, y_test = x_data[400:], y_data[400:]
+
+x = T.dmatrix("x")
+y = T.dmatrix("y")
+
+#第一个神经层in_size必须为13，因为x_data.shape = (516,13)
+l1 = Layer(x, 13, 50, T.tanh)
+l2 = Layer(l1.outputs, 50, 1, None)
+
+# the way to compute cost
+#利用正则化算法惩罚过拟合
+#cost = T.mean(T.square(l2.outputs - y))      # without regularization
+cost = T.mean(T.square(l2.outputs - y)) + 0.1 * ((l1.W ** 2).sum() + (l2.W ** 2).sum())  # with l2 regularization
+# cost = T.mean(T.square(l2.outputs - y)) + 0.1 * (abs(l1.W).sum() + abs(l2.W).sum())  # with l1 regularization
+gW1, gb1, gW2, gb2 = T.grad(cost, [l1.W, l1.b, l2.W, l2.b])
+
+learning_rate = 0.01
+train = theano.function(
+    inputs=[x, y],
+    updates=[(l1.W, l1.W - learning_rate * gW1),
+             (l1.b, l1.b - learning_rate * gb1),
+             (l2.W, l2.W - learning_rate * gW2),
+             (l2.b, l2.b - learning_rate * gb2)])
+
+compute_cost = theano.function(inputs=[x, y], outputs=cost)
+
+# record cost
+train_err_list = []
+test_err_list = []
+learning_time = []
+for i in range(1000):
+    train(x_train, y_train)
+    if i % 10 == 0:
+        # record cost
+        train_err_list.append(compute_cost(x_train, y_train))
+        test_err_list.append(compute_cost(x_test, y_test))
+        learning_time.append(i)
+
+# plot cost history
+plt.plot(learning_time, train_err_list, 'r-')
+plt.plot(learning_time, test_err_list, 'b--')
+plt.show()
+
+
+
+
+#训完完之后保存参数
+import numpy as np
+import theano
+import theano.tensor as T
+import pickle
+
+def compute_accuracy(y_target, y_predict):
+    correct_prediction = np.equal(y_predict, y_target)
+    accuracy = np.sum(correct_prediction)/len(correct_prediction)
+    return accuracy
+
+rng = np.random
+
+# set random seed
+np.random.seed(100)
+
+N = 400
+feats = 784
+
+# generate a dataset: D = (input_values, target_class)
+D = (rng.randn(N, feats), rng.randint(size=N, low=0, high=2))
+
+# Declare Theano symbolic variables
+x = T.dmatrix("x")
+y = T.dvector("y")
+
+# initialize the weights and biases
+w = theano.shared(rng.randn(feats), name="w")
+b = theano.shared(0., name="b")
+
+# Construct Theano expression graph
+p_1 = 1 / (1 + T.exp(-T.dot(x, w) - b))
+prediction = p_1 > 0.5
+xent = -y * T.log(p_1) - (1-y) * T.log(1-p_1)
+cost = xent.mean() + 0.01 * (w ** 2).sum()
+gw, gb = T.grad(cost, [w, b])
+
+# Compile
+learning_rate = 0.1
+train = theano.function(
+          inputs=[x, y],
+          updates=((w, w - learning_rate * gw), (b, b - learning_rate * gb)))
+predict = theano.function(inputs=[x], outputs=prediction)
+
+# Training
+for i in range(500):
+    train(D[0], D[1])
+
+# save model
+with open('C:/Users/Administrator/Desktop/model.pickle', 'wb') as file:
+    model = [w.get_value(), b.get_value()]
+    pickle.dump(model, file)
+    print(model[0][:10])
+    print("accuracy:", compute_accuracy(D[1], predict(D[0])))
+
+# load model
+with open('C:/Users/Administrator/Desktop/model.pickle', 'rb') as file:
+    model = pickle.load(file)
+    w.set_value(model[0])
+    b.set_value(model[1])
+    print(w.get_value()[:10])
+    print("accuracy:", compute_accuracy(D[1], predict(D[0])))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
